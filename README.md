@@ -23,5 +23,5 @@ https://bbuseruploads.s3.amazonaws.com/e2740454-6996-43a6-8eb1-4cbdaae86ddd/down
   - LCD and RTC connected Analog pin4 + pin5 I2c bus
   - Temp Sensors OneWire to Digital pin2 (4.7K Resistor between VCC and Data Line)
   created 2025
-  by Stephen McBain
-  */
+  by Stephen McBain <https://mcbainsite.co.uk>
+*/
