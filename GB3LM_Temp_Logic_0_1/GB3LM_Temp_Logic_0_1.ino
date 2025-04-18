@@ -9,7 +9,7 @@
   by Stephen McBain <https://mcbainsite.co.uk>
 */
 
-const char *codeversion = "0.0.1";
+const char *codeversion = "0.1";
 //Load needed libries / Basic Setup
 #include <SPI.h>
 #include <Wire.h> //I2C Communication

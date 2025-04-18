@@ -2,14 +2,16 @@
   GB3LM Temperature Control Logic
 
   The circuit:
-  - LCD and RTC connected Analog pin4 + pin5 I2c bus
-  - Temp Sensors OneWire to Digital pin2 (4.7K Resistor between VCC and Data Line)
+  - LCD and RTC connected Analog pin A4 (SDA) + pin A5 (SCL) I2c bus
+  - Temp Sensors OneWire to Digital pin D2 (4.7K Resistor between VCC and Data Line)
+  - Fan Speed Sence input on Digital pin D3 (1k Resistor between VCC and Sensor Line)
+  - Fan Call Line Output on Digital Pin D4 (270ohm resistor in Series between pin and Transistor Base, Fan - Emitter, 12v Collector) (Pull down resistor req on Output pin)
 
   created 2025
   by Stephen McBain <https://mcbainsite.co.uk>
 */
 
-const char *codeversion = "0.0.2";
+const char *codeversion = "0.4";
 //Load needed libries / Basic Setup
 #include <SPI.h>
 #include <Wire.h> //I2C Communication
@@ -29,9 +31,9 @@ DallasTemperature sensors(&oneWire);
 // Assign the addresses of your 1-Wire temp sensors.
 // See the tutorial on how to obtain these addresses:
 // http://www.hacktronics.com/Tutorials/arduino-1-wire-address-finder.html
-DeviceAddress TX = { 0x28, 0xFF, 0x6B, 0x13, 0x32, 0x18, 0x01, 0xCC };
-DeviceAddress RX = { 0x28, 0xFF, 0x16, 0xBC, 0x31, 0x18, 0x02, 0x78 };
-DeviceAddress CAS = { 0x28, 0xFF, 0xE1, 0x22, 0x32, 0x18, 0x01, 0x7D };
+DeviceAddress CAS = { 0x28, 0xFF, 0x6B, 0x13, 0x32, 0x18, 0x01, 0xCC };
+DeviceAddress TX = { 0x28, 0xFF, 0x16, 0xBC, 0x31, 0x18, 0x02, 0x78 };
+DeviceAddress RX = { 0x28, 0xFF, 0xE1, 0x22, 0x32, 0x18, 0x01, 0x7D };
 DeviceAddress TBC = { 0x28, 0xFF, 0xE1, 0x22, 0x32, 0x18, 0x01, 0x7D };
 
 // -- LCD Setup Assign pins to names
@@ -49,7 +51,7 @@ DeviceAddress TBC = { 0x28, 0xFF, 0xE1, 0x22, 0x32, 0x18, 0x01, 0x7D };
 LiquidCrystal_I2C lcd(I2C_ADDR, En_pin, Rw_pin, Rs_pin, D4_pin, D5_pin, D6_pin, D7_pin);
 
 //Set temp allert marker temprature
-const PROGMEM int allert = 50;
+const PROGMEM int allert = 30;
 int myh = 0; // -- Variable to set 12 hour time
 float S1;
 float S2;
@@ -57,8 +59,14 @@ float S3;
 float S4;
 byte startup = 1;
 
+//Set pins and variable for Fan RPM
+const int tachoPin = 3;
+volatile unsigned long counter = 0;
+
 void setup()
 {
+  // Fan control
+  pinMode(4, OUTPUT);
   Serial.begin(9600); //Start Serial
   Serial.println("GB3LM Temprature Logic");
   Serial.print("Version ");
@@ -68,7 +76,7 @@ void setup()
   // LCD Backlight ON
   lcd.setBacklightPin(BACKLIGHT_PIN, POSITIVE);
   lcd.setBacklight(HIGH);
-
+  attachInterrupt(digitalPinToInterrupt(tachoPin), countPulses, FALLING); // Interupt to count Fan RPM
   // Start up the sensors library
   Serial.println(F("Locating devices..."));
   sensors.begin();
@@ -106,13 +114,15 @@ void setup()
   //sensors.setResolution(TBC1, 10);
 
   // -- LCD Welcome Message
-  lcd.setCursor(5, 0); // go home on LCD
+  lcd.setCursor(4, 0); // go home on LCD
   lcd.print("GB3LM Logic");
   lcd.setCursor(4, 1);
   lcd.print("Version ");
   lcd.print(codeversion);
-  lcd.setCursor(2, 3);
-  lcd.print("mcbainsite.co.uk");
+  lcd.setCursor(2, 2);
+  lcd.print("lincolnrepeaters");
+  lcd.setCursor(7, 3);
+  lcd.print(".co.uk");
   delay(3000);
   layout();
   Serial.print("------Setup Completed------\r\n\r\n");
@@ -131,13 +141,9 @@ void layout()// standard layout of screen
   lcd.setCursor(10, 1);
   lcd.print(F("RX:"));
   lcd.setCursor(0, 2);
-  lcd.print(F("CAS:"));
-  lcd.setCursor(10, 2);
-  lcd.print(F("TBC:"));
+  lcd.print(F("Case:"));
   lcd.setCursor(0, 3);
-  lcd.print(F("Fan:"));
-  lcd.setCursor(8,3);
-  lcd.print(F("Spinning:"));
+  lcd.print(F("Fan Spinning:"));
   loop();
 }
 
@@ -160,9 +166,11 @@ float S4 = sensors.getTempC(TBC);
     if (S1 >= allert) {
       lcd.print(S1);
       lcd.print("*");
+      digitalWrite(4, HIGH);
     } else {
       lcd.print(S1);
       lcd.print(" ");
+      digitalWrite(4, LOW);
     }
   }
   //Sensor 2
@@ -171,15 +179,15 @@ float S4 = sensors.getTempC(TBC);
     lcd.print("N/A   ");
   } else {
     if (S2 >= allert) {
-      lcd.print(S2);
+      lcd.print(S2 + 0.5);
       lcd.print("*");
     } else {
-      lcd.print(S2);
+      lcd.print(S2 + 0.5);
       lcd.print(" ");
     }
   }
   //Sensor 3
-  lcd.setCursor(4, 2);
+  lcd.setCursor(5, 2);
   if (S3 == -127.00) {
     lcd.print("N/A   ");
   } else {
@@ -191,23 +199,6 @@ float S4 = sensors.getTempC(TBC);
       lcd.print(" ");
     }
   }
-  //return; // REMOVE THIS LINE AND ONE ABOVE WHEN ADDITIONAL SENSORS ADDED 
-  //Sensor 4
-  lcd.setCursor(14, 2);
-  if (S4 == -127.00) {
-    lcd.print("N/A   ");
-  } else {
-    if (S4 >= allert) {
-      //lcd.print(S4);
-      lcd.print("N/A"); 
-      lcd.print("*");
-    } else {
-      //lcd.print(S4);
-      lcd.print("N/A");
-      lcd.print(" ");
-    }
-  }
-Serial.println();
 return;
 }
 
@@ -289,8 +280,30 @@ void recvWithStartEndMarkers() {
   return;
 } 
 
+void countPulses() {
+  counter ++;
+}
+
+void printrpm() {
+long  rpm = counter * 30 / 2;
+if (rpm >0){
+lcd.setCursor(15,3);
+lcd.print("   ");
+lcd.setCursor(15,3);
+lcd.print("Yes");
+} else {
+lcd.setCursor(15,3);
+lcd.print("   ");
+lcd.setCursor(15,3);
+lcd.print("No");
+}
+counter = 0;
+}
+
 void loop()
 {
-recvWithStartEndMarkers();
+delay(1000);
+printrpm();
+//recvWithStartEndMarkers();
 tempreadprint();
 }
